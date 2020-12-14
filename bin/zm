@@ -1,0 +1,440 @@
+#! /usr/bin/env bash
+#' Zoom Command-Line Tool
+#'
+#' Usage:
+#'  zm [options] <command> (shortcut|id|zoom_url)
+#'
+#' Commands:
+#'  info     List details on a contact
+#'  join     Join a meeting
+#'  kill     Kill all Zoom processes of yours
+#'  contacts Show the 'zm' address book
+#'
+#' Options:
+#'  --dryrun    Run it through without Zoom actions
+#'  --help      Display this help
+#'  --version   Display version
+#'  --debug     Extra debug outpu
+#'
+#' Address book specific for 'zm':
+#' Create a file '~/.zoom/zm-addressbook' with entries:
+#'
+#' shortcut alice
+#' meeting 123456789
+#' password ZzxYmrldQVVW09y0RYdwMDctcPVdE22O
+#'
+#' Examples:
+#'  zm info alice
+#'  zm join alice
+#'  zm kill
+#'
+#' Version: 0.0.0-9003
+#'
+#' Copyright: Henrik Bengtsson (2020)
+#' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
+#' Source: https://github.com/HenrikBengtsson/zm
+call="$0 $*"
+
+# -------------------------------------------------------------------------
+# Output utility functions
+# -------------------------------------------------------------------------
+_tput() {
+    if [[ $theme == "none" ]]; then
+	return
+    fi
+    tput "$@" 2> /dev/null
+}
+
+mecho() { echo "$@" 1>&2; }
+mdebug() {
+    if ! $debug; then
+        return
+    fi
+    {
+        _tput setaf 8 ## gray
+        echo "DEBUG: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+}
+merror() {
+    {
+        _tput setaf 1 ## red
+        echo "ERROR: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+    _exit 1
+}
+mwarn() {
+    {
+        _tput setaf 3 ## yellow
+        echo "WARNING: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+}
+minfo() {
+    if ! $verbose; then
+        return
+    fi
+    {
+        _tput setaf 4 ## blue
+        echo "INFO: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+}
+mok() {
+    {
+        _tput setaf 2 ## green
+        echo "OK: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+}
+mdeprecated() {
+    {
+        _tput setaf 3 ## yellow
+        echo "DEPRECATED: $*"
+        _tput sgr0    ## reset
+    } 1>&2
+}
+
+_exit() {
+    local value
+    
+    value=${1:-0}
+    mdebug "Exiting with exit code $value"
+    exit "$value"
+}
+
+
+# -------------------------------------------------------------------------
+# CLI utility functions
+# -------------------------------------------------------------------------
+version() {
+    grep -E "^###[ ]*Version:[ ]*" "$0" | sed 's/###[ ]*Version:[ ]*//g'
+}
+
+help() {
+    local what res
+    
+    what=$1
+    res=$(grep "^#'" "$0" | sed -E "s/^#'(| )//")
+    
+    if [[ $what == "full" ]]; then
+	res=$(echo "$res" | sed '/^---/d')
+    else
+	res=$(echo "$res" | sed '/^---/Q')
+    fi
+    
+    printf "%s\\n" "${res[@]}"
+}
+
+
+# -------------------------------------------------------------------------
+# Zoom functions
+# -------------------------------------------------------------------------
+# https://marketplace.zoom.us/docs/guides/guides/client-url-schemes
+zoom_url() {
+    type=$1
+    action=$2
+    confno=$3
+    pwd=$4
+    [[ -n "$type" ]] || merror "Type of Zoom URL not specified"
+    [[ -n "$confno" ]] || merror "Meeting ID not specified"
+    if [[ $type == "browser" ]]; then
+        url="https://zoom.us/wc/join/$confno"
+        if [[ -n "$pwd" ]]; then
+            url="${url}?pwd=$pwd"
+        fi
+    elif [[ $type == "client" ]]; then
+        url="zoommtg://zoom.us/$action?confno=$confno"
+        if [[ -n "$pwd" ]]; then
+            url="${url}&pwd=$pwd"
+        fi
+    elif [[ $type == "generic" ]]; then
+        url="https://zoom.us/j/$confno"
+        if [[ -n "$pwd" ]]; then
+            url="${url}?pwd=$pwd"
+        fi
+    else
+        merror "Unknown type of Zoom URL: '$type'"
+    fi
+    mdebug "URL: $url"
+    echo "$url"
+}
+
+
+zoom_validate_meeting_id() {
+    local id
+    id=$1
+    [[ ${id} =~ ^[0-9]+$ ]] || merror "Not a valid Zoom Meeting ID: '$id'"
+    [[ ${#id} -eq 9 ]] || [[ ${#id} -eq 10 ]]|| [[ ${#id} -eq 11 ]] || merror "Not a valid Zoom Meeting ID: '$id'"
+}
+
+zoom_validate_meeting_pwd() {
+    local pwd
+    pwd=$1
+    [[ -z $pwd ]] && return
+    [[ ${pwd} =~ ^[0-9a-zA-Z]+$ ]] || merror "Not a valid Zoom Meeting password: '$pwd'"
+}
+
+
+is_zoom_url() {
+    echo "$1" | grep -q "https://.*[.]zoom[.]us/*"
+}
+
+zoom_parse_url() {
+    local url
+    local baseurl
+    local pwd
+    url=$1
+    mdebug "url=$url"
+    baseurl=${url%%[?]*}
+    mdebug "baseurl=$baseurl"
+    query=${url//$baseurl/}
+    id=${baseurl//https:\/\/*.zoom.us*\//}
+    mdebug "id=$id"
+    zoom_validate_meeting_id "$id"
+    if [[ -n $query ]]; then
+      query=${query//[?]/}
+      mdebug "query=$query"
+      pwd=${query//pwd=/}
+      mdebug "pwd=$pwd"
+      zoom_validate_meeting_pwd "$pwd"
+    fi
+    echo "$id"
+    echo "$pwd"
+}
+
+## Address book
+zm_addressbook_file() {
+    local file
+    file="$HOME/.zoom/zm-addressbook"
+    [[ -f "$file" ]] || merror "No such file: $file"
+    echo "$file"
+}
+
+zm_addressbook_exists() {
+    local file
+    file=$(zm_addressbook_file)
+    grep -q -F "$1" "$file"
+}
+
+zm_addressbook_get() {
+    local file
+    file=$(zm_addressbook_file)
+    grep -q -F "$1" "$file" || merror "Shortcut '$1' does not existing: $file"
+    info=$(grep -A2 -F "$1" "$file")
+    meeting=$(echo "$info" | grep -F "meeting" | sed 's/.* //g')
+    password=$(echo "$info" | grep -F "password" | sed 's/.* //g')
+    echo "$meeting"
+    echo "$password"
+}
+
+zoom_quick_hb() {
+    zm_addressbook_get hb
+}
+
+zoom_quick_abo() {
+    zm_addressbook_get abo
+}
+
+zoom_quick_wynton() {
+    zm_addressbook_get wynton
+}
+
+zoom_quick_bhgc() {
+    zm_addressbook_get bhgc
+}
+
+zoom_quick_rf() {
+    zm_addressbook_get rf
+}
+
+zoom_quick_depken() {
+    zm_addressbook_get depken
+}    
+
+zoom_quick_rc() {
+    zm_addressbook_get rc
+}
+
+zoom_quick_meeting_id() {
+    fcn="zoom_quick_$1"
+    res=($(eval "$fcn"))
+    echo "${res[0]}"
+}
+
+zoom_quick_meeting_pwd() {
+    fcn="zoom_quick_$1"
+    res=($(eval "$fcn"))
+    echo "${res[1]}"
+}
+
+
+# -------------------------------------------------------------------------
+# MAIN
+# -------------------------------------------------------------------------
+## General
+theme=color
+debug=false
+verbose=true
+dryrun=false
+
+## Actions
+action="help"
+
+## Zoom options
+meeting_label=
+meeting_id=
+meeting_pwd=
+meeting_pwd_label="<none>"
+meeting_target="client"
+
+launcher=xdg-open
+
+# Parse command-line options
+while [[ $# -gt 0 ]]; do
+    mdebug "Next CLI argument: $1"
+    ## Commands:
+    if [[ "$1" == "info" ]]; then
+        action="info"
+        
+    elif [[ "$1" == "join" ]]; then
+        action="join"
+    
+    elif [[ "$1" == "kill" ]]; then
+        action="kill"
+
+    elif [[ "$1" == "addressbook" ]]; then
+        action="addressbook"
+
+    ## Options (--flags):
+    elif [[ "$1" == "--help" ]]; then
+        action="help"
+    elif [[ "$1" == "--version" ]]; then
+        action="version"
+    elif [[ "$1" == "--debug" ]]; then
+        debug=true
+    elif [[ "$1" == "--verbose" ]]; then
+        verbose=true
+    elif [[ "$1" == "--dryrun" ]]; then
+        dryrun=true
+    elif [[ "$1" == "--dry-run" ]]; then
+        merror "Did you mean to use '--dryrun'?"
+	
+    ## Options (--key=value):
+    elif [[ "$1" =~ ^--.*=.*$ ]]; then
+        key=${1//--}
+        key=${key//=*}
+        value=${1//--[[:alpha:]]*=}
+	mdebug "Key-value option '$1' parsed to key='$key', value='$value'"
+        if [[ -z $value ]]; then
+	    merror "Option '--$key' must not be empty"
+	fi
+        if [[ "$key" == "pwd" ]]; then
+            meeting_pwd=$value
+            meeting_pwd_label="<password>"
+        elif [[ "$key" == "target" ]]; then
+            meeting_target=$value
+        elif [[ "$key" == "launcher" ]]; then
+            launcher=$value
+        elif [[ "$key" == "theme" ]]; then
+            theme=$value
+        fi
+
+    ## Additional options to be appended (rarely needed)
+    else
+        meeting_id="$1"
+    fi
+    shift
+done
+
+
+## --help should always be available prior to any validation errors
+if [[ -z $action ]]; then
+    help
+    _exit 0
+elif [[ $action == "help" ]]; then
+    help full
+    _exit 0
+elif [[ $action == "version" ]]; then
+    version
+    _exit 0
+fi
+
+
+# -------------------------------------------------------------------------
+# Validate options
+# -------------------------------------------------------------------------
+if [[ -n "$meeting_id" ]]; then
+    if zm_addressbook_exists "$meeting_id"; then
+        meeting_label="$meeting_id"
+        mdebug "Detected quick name: '$meeting_label'"
+        meeting_id=$(zoom_quick_meeting_id "$meeting_label")
+        meeting_pwd=$(zoom_quick_meeting_pwd "$meeting_label")
+    elif is_zoom_url "$meeting_id"; then
+        res=($(zoom_parse_url "$meeting_id"))
+        meeting_id=${res[0]}
+        meeting_pwd=${res[1]}
+        mdebug "meeting_id=$meeting_id"
+        mdebug "meeting_pwd=$meeting_pwd"
+    fi
+    if [[ -n "$meeting_pwd" ]]; then
+        meeting_pwd_label="<password>"
+    fi
+    mdebug " -> meeting id   : '$meeting_id'"
+    mdebug " -> meeting pwd  : '$meeting_pwd_label'"
+    zoom_validate_meeting_id "$meeting_id"
+    zoom_validate_meeting_pwd "$meeting_pwd"
+fi         
+
+
+# -------------------------------------------------------------------------
+# Initiate
+# -------------------------------------------------------------------------
+mdebug "call: $call"
+mdebug "verbose: $verbose"
+mdebug "action: $action"
+mdebug "Zoom Meeting shortcut: '$meeting_label'"
+mdebug "Zoom Meeting ID: '$meeting_id'"
+mdebug "Zoom Meeting password: '$meeting_pwd_label'"
+mdebug "Zoom Meeting target: '$meeting_target'"
+mdebug "Launcher: '$launcher'"
+
+
+# -------------------------------------------------------------------------
+# Actions
+# -------------------------------------------------------------------------
+
+if [[ $action == "info" ]]; then
+    [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
+    echo "Zoom Details"
+    echo "-----------------------------------------------------"
+    echo " shortcut: $meeting_label"
+    echo "  meeting: $meeting_id"
+    echo " password: $meeting_pwd_label"
+    echo "  browser: $(zoom_url browser join "$meeting_id" "$meeting_pwd")"
+    echo "   client: $(zoom_url client  join "$meeting_id" "$meeting_pwd")"
+    echo "      url: $(zoom_url generic join "$meeting_id" "$meeting_pwd")"
+    _exit 0
+elif [[ $action == "join" ]]; then
+    [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
+    url=$(zoom_url "$meeting_target" join "$meeting_id" "$meeting_pwd")
+    cmd="\"$launcher\" \"$url\" &> /dev/null"
+    mdebug "Calling: $cmd"
+    minfo "Opening: $url"
+    $dryrun || eval "$cmd"
+    exit_value=$?
+    _exit "${exit_value}"
+elif [[ $action == "kill" ]]; then
+    pkill zoom
+    exit_value=$?
+    mdebug "Killed 'zoom' process (exit code=$exit_value)"
+    _exit "${exit_value}"
+elif [[ $action == "addressbook" ]]; then
+    file="$(zm_addressbook_file)"
+    echo "Content of 'zm' address book file '$file':"
+    echo
+    cat "$file"
+fi
+
+_exit 0
