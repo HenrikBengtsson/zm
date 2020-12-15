@@ -1,14 +1,13 @@
 #! /usr/bin/env bash
-#' Zoom Command-Line Tool
+#' zm - Quickly Connect to a Zoom Meeting
 #'
 #' Usage:
 #'  zm [options] <command> (shortcut|id|zoom_url)
 #'
 #' Commands:
-#'  info     List details on a contact
+#'  info     Show address book or details for a specific contact
 #'  join     Join a meeting
 #'  kill     Kill all Zoom processes of yours
-#'  contacts Show the 'zm' address book
 #'
 #' Options:
 #'  --dryrun    Run it through without Zoom actions
@@ -16,19 +15,27 @@
 #'  --version   Display version
 #'  --debug     Extra debug outpu
 #'
-#' Address book specific for 'zm':
-#' Create a file '~/.zoom/zm-addressbook' with entries:
+#' Examples:
+#'  zm info alice
+#'  zm join alice
+#'  zm kill
+#'  zm info
+#'
+#' Configuration:
+#' In order to use a shortcut (e.g. 'alice') to connect to a Zoom
+#' meeting, an 'alice' entry that specifies the Zoom meeting ID and
+#' the optional Zoom meeting password must be added to the address-book
+#' file '~/.zoom/zm-addressbook' (specific to 'zm'; unknown to 'Zoom').
+#' For example:
 #'
 #' shortcut alice
 #' meeting 123456789
 #' password ZzxYmrldQVVW09y0RYdwMDctcPVdE22O
 #'
-#' Examples:
-#'  zm info alice
-#'  zm join alice
-#'  zm kill
+#' Additional entries can be added the same way.  There must be at
+#' least one empty line inbetween entries.
 #'
-#' Version: 0.0.0-9003
+#' Version: 0.0.0-9004
 #'
 #' Copyright: Henrik Bengtsson (2020)
 #' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
@@ -109,7 +116,7 @@ _exit() {
 # CLI utility functions
 # -------------------------------------------------------------------------
 version() {
-    grep -E "^###[ ]*Version:[ ]*" "$0" | sed 's/###[ ]*Version:[ ]*//g'
+    grep -E "^#'[ ]*Version:[ ]*" "$0" | sed "s/#'[ ]*Version:[ ]*//g"
 }
 
 help() {
@@ -406,15 +413,22 @@ mdebug "Launcher: '$launcher'"
 # -------------------------------------------------------------------------
 
 if [[ $action == "info" ]]; then
-    [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
-    echo "Zoom Details"
-    echo "-----------------------------------------------------"
-    echo " shortcut: $meeting_label"
-    echo "  meeting: $meeting_id"
-    echo " password: $meeting_pwd_label"
-    echo "  browser: $(zoom_url browser join "$meeting_id" "$meeting_pwd")"
-    echo "   client: $(zoom_url client  join "$meeting_id" "$meeting_pwd")"
-    echo "      url: $(zoom_url generic join "$meeting_id" "$meeting_pwd")"
+    ## Show address book or specific contact?
+    if [[ -z "$meeting_id" ]]; then
+      file="$(zm_addressbook_file)"
+      echo "'zm' address book ('$file'):"
+      echo
+      cat "$file"
+    else
+      echo "Zoom Details"
+      echo "-----------------------------------------------------"
+      echo " shortcut: $meeting_label"
+      echo "  meeting: $meeting_id"
+      echo " password: $meeting_pwd_label"
+      echo "  browser: $(zoom_url browser join "$meeting_id" "$meeting_pwd")"
+      echo "   client: $(zoom_url client  join "$meeting_id" "$meeting_pwd")"
+      echo "      url: $(zoom_url generic join "$meeting_id" "$meeting_pwd")"
+    fi
     _exit 0
 elif [[ $action == "join" ]]; then
     [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
@@ -430,11 +444,6 @@ elif [[ $action == "kill" ]]; then
     exit_value=$?
     mdebug "Killed 'zoom' process (exit code=$exit_value)"
     _exit "${exit_value}"
-elif [[ $action == "addressbook" ]]; then
-    file="$(zm_addressbook_file)"
-    echo "Content of 'zm' address book file '$file':"
-    echo
-    cat "$file"
 fi
 
 _exit 0
