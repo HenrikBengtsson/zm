@@ -10,6 +10,7 @@
 #'  kill     Kill all Zoom processes of yours
 #'
 #' Options:
+#'  --mictest   Run a microphone test before joining meeting
 #'  --dryrun    Run it through without Zoom actions
 #'  --help      Display this help
 #'  --version   Display version
@@ -18,6 +19,7 @@
 #' Examples:
 #'  zm info alice
 #'  zm join alice
+#'  zm join --mictest alice
 #'  zm kill
 #'  zm info
 #'
@@ -35,7 +37,7 @@
 #' Additional entries can be added the same way.  There must be at
 #' least one empty line inbetween entries.
 #'
-#' Version: 0.0.0-9004
+#' Version: 0.0.0-9005
 #'
 #' Copyright: Henrik Bengtsson (2020)
 #' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
@@ -132,6 +134,25 @@ help() {
     fi
     
     printf "%s\\n" "${res[@]}"
+}
+
+
+# -------------------------------------------------------------------------
+# Audio & video functions
+# -------------------------------------------------------------------------
+mictest() {
+    local duration
+    duration=${1:-6}
+    mdebug "Using 'arecord' to display microphone input ..."
+    if [[ $duration -eq 0 ]]; then
+        minfo "Microphone test: Press Ctrl-C when done ..."
+    else
+        minfo "Microphone test: Running for ${duration} seconds ..."
+    fi
+    arecord --quiet --vumeter=mono --duration="${duration}" /dev/null
+    exit_value=$?
+    echo
+    return "${exit_value}"
 }
 
 
@@ -255,6 +276,7 @@ theme=color
 debug=false
 verbose=true
 dryrun=false
+mictest=false
 
 ## Actions
 action="help"
@@ -275,6 +297,9 @@ while [[ $# -gt 0 ]]; do
     if [[ "$1" == "info" ]]; then
         action="info"
         
+    elif [[ "$1" == "mictest" ]]; then
+        action="mictest"
+    
     elif [[ "$1" == "join" ]]; then
         action="join"
     
@@ -293,6 +318,8 @@ while [[ $# -gt 0 ]]; do
         debug=true
     elif [[ "$1" == "--verbose" ]]; then
         verbose=true
+    elif [[ "$1" == "--mictest" ]]; then
+        mictest=true
     elif [[ "$1" == "--dryrun" ]]; then
         dryrun=true
     elif [[ "$1" == "--dry-run" ]]; then
@@ -402,6 +429,12 @@ if [[ $action == "info" ]]; then
     _exit 0
 elif [[ $action == "join" ]]; then
     [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
+
+    ## Run a microphone test first?
+    if $mictest; then
+        mictest 0
+    fi
+    
     url=$(zoom_url "$meeting_target" join "$meeting_id" "$meeting_pwd")
     cmd="\"$launcher\" \"$url\" &> /dev/null"
     mdebug "Calling: $cmd"
@@ -413,6 +446,10 @@ elif [[ $action == "kill" ]]; then
     pkill zoom
     exit_value=$?
     mdebug "Killed 'zoom' process (exit code=$exit_value)"
+    _exit "${exit_value}"
+elif [[ $action == "mictest" ]]; then
+    mictest
+    exit_value=$?
     _exit "${exit_value}"
 fi
 
