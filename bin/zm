@@ -140,18 +140,54 @@ help() {
 # -------------------------------------------------------------------------
 # Audio & video functions
 # -------------------------------------------------------------------------
-micinfo() {
+mic_info() {
     local src
     src=$(pactl info | grep -F "Default Source: " | sed 's/Default Source: //')
     echo "$src"
 }
 
-mictest() {
+mic_find() {
+    local name
+    local ans
+    name=$1
+    mdebug "Finding microphone source"
+    mdebug " - name: '${name}'"
+    [[ -z $name ]] && merror "Microphone not specified"
+    mapfile -t ans < <(pactl list short sources | grep -iF "$name")
+    mdebug " - number of matches: ${#ans[*]}"
+    [[ ${#ans[*]} -eq 0 ]] && merror "No such microphone found: '$name'"
+    for kk in "${!ans[@]}"; do
+      mdebug " - entry #${kk}: ${ans[${kk}]}"
+    done
+    if [[ ${#ans[*]} -gt 1 ]]; then
+        mdebug " - using first entry"
+    fi
+    ans=$(echo "${ans[0]}" | cut -f 2)
+    mdebug " - full name: '${ans}'"
+    [[ -z $ans ]] && merror "Failed to infer full microphone name: '$name'"
+    echo "$ans"
+}
+
+mic_set() {
+    local name
+    local fullname
+    name=$1
+    mdebug "Setting default microphone ..."
+    mdebug " - name: '$name'"
+    fullname=$(mic_find "$name")
+    mdebug " - full name: '$fullname'"
+    pactl set-default-source "$fullname" || merror "Failed to set default microphone to '$fullname'"
+    mdebug " - default source: '$(mic_info)'"
+    minfo "Default microphone: $(mic_info)"
+    pactl info
+}
+
+mic_test() {
     local duration
     duration=${1:-6}
     mdebug "Using 'arecord' to display microphone input ..."
     minfo "Microphone test:"
-    minfo "  - source: $(micinfo)"
+    minfo "  - source: $(mic_info)"
     if [[ $duration -eq 0 ]]; then
         minfo "  - Press Ctrl-C when done ..."
     else
@@ -288,6 +324,7 @@ debug=false
 verbose=true
 dryrun=false
 mictest=false
+micname=
 
 ## Actions
 action="help"
@@ -354,6 +391,9 @@ while [[ $# -gt 0 ]]; do
             launcher=$value
         elif [[ "$key" == "theme" ]]; then
             theme=$value
+        elif [[ "$key" == "mic" ]]; then
+            mic=$value
+            mic_find "$mic"
         fi
 
     ## Additional options to be appended (rarely needed)
@@ -409,6 +449,7 @@ fi
 mdebug "call: $call"
 mdebug "verbose: $verbose"
 mdebug "action: $action"
+mdebug "mic: $mic"
 mdebug "Zoom Meeting shortcut: '$meeting_label'"
 mdebug "Zoom Meeting ID: '$meeting_id'"
 mdebug "Zoom Meeting password: '$meeting_pwd_label'"
@@ -441,9 +482,13 @@ if [[ $action == "info" ]]; then
 elif [[ $action == "join" ]]; then
     [[ -n "$meeting_id" ]] || { merror "Zoom Meeting ID not specified"; }
 
+    if [[ -n "$mic" ]]; then
+        mic_set "$mic"
+    fi
+    
     ## Run a microphone test first?
     if $mictest; then
-        mictest 0
+        mic_test 0
     fi
     
     url=$(zoom_url "$meeting_target" join "$meeting_id" "$meeting_pwd")
@@ -459,7 +504,7 @@ elif [[ $action == "kill" ]]; then
     mdebug "Killed 'zoom' process (exit code=$exit_value)"
     _exit "${exit_value}"
 elif [[ $action == "mictest" ]]; then
-    mictest
+    mic_test
     exit_value=$?
     _exit "${exit_value}"
 fi
