@@ -236,43 +236,13 @@ zm_addressbook_get() {
     echo "$password"
 }
 
-zoom_quick_hb() {
-    zm_addressbook_get hb
-}
-
-zoom_quick_abo() {
-    zm_addressbook_get abo
-}
-
-zoom_quick_wynton() {
-    zm_addressbook_get wynton
-}
-
-zoom_quick_bhgc() {
-    zm_addressbook_get bhgc
-}
-
-zoom_quick_rf() {
-    zm_addressbook_get rf
-}
-
-zoom_quick_depken() {
-    zm_addressbook_get depken
-}    
-
-zoom_quick_rc() {
-    zm_addressbook_get rc
-}
-
 zoom_quick_meeting_id() {
-    fcn="zoom_quick_$1"
-    res=($(eval "$fcn"))
+    res=($(zm_addressbook_get "$1"))
     echo "${res[0]}"
 }
 
 zoom_quick_meeting_pwd() {
-    fcn="zoom_quick_$1"
-    res=($(eval "$fcn"))
+    res=($(zm_addressbook_get "$1"))
     echo "${res[1]}"
 }
 
