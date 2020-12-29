@@ -140,18 +140,29 @@ help() {
 # -------------------------------------------------------------------------
 # Audio & video functions
 # -------------------------------------------------------------------------
+micinfo() {
+    local src
+    src=$(pactl info | grep -F "Default Source: " | sed 's/Default Source: //')
+    echo "$src"
+}
+
 mictest() {
     local duration
     duration=${1:-6}
     mdebug "Using 'arecord' to display microphone input ..."
+    minfo "Microphone test:"
+    minfo "  - source: $(micinfo)"
     if [[ $duration -eq 0 ]]; then
-        minfo "Microphone test: Press Ctrl-C when done ..."
+        minfo "  - Press Ctrl-C when done ..."
     else
-        minfo "Microphone test: Running for ${duration} seconds ..."
+        minfo "  - Running for ${duration} seconds ..."
     fi
+#    _tput setaf 4 ## blue
+    _tput setaf 3 ## yellow
     arecord --quiet --vumeter=mono --duration="${duration}" /dev/null
     exit_value=$?
     echo
+    _tput sgr0    ## reset
     return "${exit_value}"
 }
 
