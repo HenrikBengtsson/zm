@@ -470,14 +470,15 @@ mdebug "Launcher: '$launcher'"
 # -------------------------------------------------------------------------
 
 if [[ $action == "info" ]]; then
+    file="$(zm_addressbook_file)"
     ## Show address book or specific contact?
     if [[ -z "$meeting_id" ]]; then
-      file="$(zm_addressbook_file)"
       echo "'zm' address book ('$file'):"
+      echo "-----------------------------------------------------"
       echo
       cat "$file"
     else
-      echo "Zoom Details"
+      echo "Zoom Details from '$file':"
       echo "-----------------------------------------------------"
       echo " shortcut: $meeting_label"
       echo "  meeting: $meeting_id"
