@@ -30,16 +30,17 @@
 #' file '~/.zoom/zm-addressbook' (specific to 'zm'; unknown to 'Zoom').
 #' For example:
 #'
-#' shortcut alice
-#' meeting 123456789
-#' password ZzxYmrldQVVW09y0RYdwMDctcPVdE22O
+#' shortcut: alice
+#' meeting: 123456789
+#' password: ZzxYmrldQVVW09y0RYdwMDctcPVdE22O
+#' comment: Meetings every Monday @ 10:00-11:00
 #'
 #' Additional entries can be added the same way.  There must be at
 #' least one empty line inbetween entries.
 #'
-#' Version: 0.0.0-9005
+#' Version: 0.0.0-9006
 #'
-#' Copyright: Henrik Bengtsson (2020)
+#' Copyright: Henrik Bengtsson (2020-2021)
 #' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
 #' Source: https://github.com/HenrikBengtsson/zm
 call="$0 $*"
@@ -296,29 +297,40 @@ zm_addressbook_exists() {
 zm_addressbook_get() {
     local file
     file=$(zm_addressbook_file)
-    grep -q -E "shortcut[ ]+$1" "$file" || merror "Shortcut '$1' does not existing: $file"
-    info=$(grep -A2 -E "shortcut[ ]+$1" "$file")
-    shortcut=$(echo "$info" | grep -F "shortcut" | sed 's/.* //g')
-    meeting=$(echo "$info" | grep -F "meeting" | sed 's/.* //g')
-    password=$(echo "$info" | grep -F "password" | sed 's/.* //g')
+    grep -q -E "shortcut:[ ]+$1" "$file" || merror "Shortcut '$1' does not existing: $file"
+    info=$(sed -E -n "/shortcut:[ ]+$1/,/^ *$/p" "$file")
+    shortcut=$(echo "$info" | grep -F "shortcut:" | sed -E 's/[[:alpha:]]+: //g')
+    meeting=$(echo "$info" | grep -F "meeting:" | sed -E 's/[[:alpha:]]+: //g')
+    password=$(echo "$info" | grep -F "password:" | sed -E 's/[[:alpha:]]+: //g')
+    comment=$(echo "$info" | grep -F "comment:" | sed -E 's/[[:alpha:]]+: //g')
     echo "$shortcut"
     echo "$meeting"
     echo "$password"
+    echo "${comment[*]}"
 }
 
 zoom_quick_meeting_shortcut() {
-    res=($(zm_addressbook_get "$1"))
+    local res
+    readarray -t res <<< "$(zm_addressbook_get "$1")"
     echo "${res[0]}"
 }
 
 zoom_quick_meeting_id() {
-    res=($(zm_addressbook_get "$1"))
+    local res
+    readarray -t res <<< "$(zm_addressbook_get "$1")"
     echo "${res[1]}"
 }
 
 zoom_quick_meeting_pwd() {
-    res=($(zm_addressbook_get "$1"))
+    local res
+    readarray -t res <<< "$(zm_addressbook_get "$1")"
     echo "${res[2]}"
+}
+
+zoom_quick_meeting_comment() {
+    local res
+    readarray -t res <<< "$(zm_addressbook_get "$1")"
+    echo "${res[3]}"
 }
 
 
@@ -486,6 +498,7 @@ if [[ $action == "info" ]]; then
       echo "  browser: $(zoom_url browser join "$meeting_id" "$meeting_pwd")"
       echo "   client: $(zoom_url client  join "$meeting_id" "$meeting_pwd")"
       echo "      url: $(zoom_url generic join "$meeting_id" "$meeting_pwd")"
+      echo "  comment: $(zoom_quick_meeting_comment "$meeting_label")"
     fi
     _exit 0
 elif [[ $action == "join" ]]; then
