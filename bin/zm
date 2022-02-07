@@ -343,7 +343,6 @@ debug=false
 verbose=true
 dryrun=false
 mictest=false
-micname=
 
 ## Actions
 action="help"
