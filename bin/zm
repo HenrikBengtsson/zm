@@ -38,7 +38,7 @@
 #' Additional entries can be added the same way.  There must be at
 #' least one empty line inbetween entries.
 #'
-#' Version: 0.0.0-9007
+#' Version: 0.0.0-9008
 #'
 #' Copyright: Henrik Bengtsson (2020-2021)
 #' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
@@ -150,6 +150,7 @@ mic_info() {
 mic_find() {
     local name
     local ans
+    local res
     name=$1
     mdebug "Finding microphone source"
     mdebug " - name: '${name}'"
@@ -163,10 +164,10 @@ mic_find() {
     if [[ ${#ans[*]} -gt 1 ]]; then
         mdebug " - using first entry"
     fi
-    ans=$(echo "${ans[0]}" | cut -f 2)
-    mdebug " - full name: '${ans}'"
-    [[ -z $ans ]] && merror "Failed to infer full microphone name: '$name'"
-    echo "$ans"
+    res=$(echo "${ans[0]}" | cut -f 2)
+    mdebug " - full name: '${res}'"
+    [[ -z $res ]] && merror "Failed to infer full microphone name: '$name'"
+    echo "$res"
 }
 
 mic_set() {
