@@ -2,12 +2,13 @@
 #' zm - Quickly Connect to a Zoom Meeting
 #'
 #' Usage:
-#'  zm [options] <command> (shortcut|id|zoom_url)
+#'  zm [options] <command> (shortcut|id|zoom_url|how)
 #'
 #' Commands:
-#'  info     Show address book or details for a specific contact
-#'  join     Join a meeting
-#'  kill     Kill all Zoom processes of yours
+#'  info        Show address book or details for a specific contact
+#'  join        Join a meeting
+#'  kill        Kill all Zoom processes of yours
+#'  test <how>  Run a test, e.g. 'mic' or 'webrtc' (default)
 #'
 #' Options:
 #'  --mictest   Run a microphone test before joining meeting
@@ -373,6 +374,9 @@ while [[ $# -gt 0 ]]; do
     elif [[ "$1" == "kill" ]]; then
         action="kill"
 
+    elif [[ "$1" == "test" ]]; then
+        action="test"
+
     elif [[ "$1" == "addressbook" ]]; then
         action="addressbook"
 
@@ -439,7 +443,7 @@ fi
 # -------------------------------------------------------------------------
 # Validate options
 # -------------------------------------------------------------------------
-if [[ -n "$meeting_id" ]]; then
+if [[ ${action} != "test" ]] && [[ -n "$meeting_id" ]]; then
     if zm_addressbook_exists "$meeting_id"; then
         meeting_label="$meeting_id"
         mdebug "Detected quick name: '$meeting_label'"
@@ -482,7 +486,17 @@ mdebug "Launcher: '$launcher'"
 # Actions
 # -------------------------------------------------------------------------
 
-if [[ $action == "info" ]]; then
+if [[ $action == "test" ]]; then
+    how=${meeting_id:-webrtc}
+    if [[ $how == "webrtc" ]]; then
+        xdg-open "https://webrtc.github.io/samples/src/content/devices/input-output/"
+    elif [[ $how == "mic" ]]; then
+        mic_test 0
+    else
+        merror "Unknown 'test': ${how}"
+    fi
+    exit 0
+elif [[ $action == "info" ]]; then
     file="$(zm_addressbook_file)"
     ## Show address book or specific contact?
     if [[ -z "$meeting_id" ]]; then
