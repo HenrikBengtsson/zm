@@ -46,7 +46,7 @@ comment: Meetings every Monday @ 10:00-11:00
 Additional entries can be added the same way. There must be at
 least one empty line inbetween entries.
 
-Version: 0.0.0-9010
+Version: 0.1.0
 
 Copyright: Henrik Bengtsson (2020-2026)
 License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
