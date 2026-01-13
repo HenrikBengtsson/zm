@@ -34,7 +34,7 @@ meeting, an 'alice' entry that specifies the Zoom meeting ID and
 the optional Zoom meeting password must be added to the address-book
 file '$XDG_CONFIG_HOME/zm/zm-addressbook', where environment
 variable 'XDG_CONFIG_HOME' defaults to '~/config'. If directory
-'$XDG_CONFIG_HOME/zm/' does not exists, '.zoom/zm-addressbook' is
+'$XDG_CONFIG_HOME/zm/' does not exists, '~/.zoom/zm-addressbook' is
 considered for backward compatibility reasons.
 For example:
 
