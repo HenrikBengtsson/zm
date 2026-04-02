@@ -42,7 +42,7 @@
 #' Additional entries can be added the same way. There must be at
 #' least one empty line inbetween entries.
 #'
-#' Version: 0.1.0
+#' Version: 0.1.0-9001
 #'
 #' Copyright: Henrik Bengtsson (2020-2026)
 #' License: GPL (>= 3.0) [https://www.gnu.org/licenses/gpl.html]
@@ -234,7 +234,7 @@ zoom_validate_meeting_pwd() {
     local pwd
     pwd=$1
     [[ -z $pwd ]] && return
-    [[ ${pwd} =~ ^[0-9a-zA-Z]+$ ]] || merror "Not a valid Zoom Meeting password: '$pwd'"
+    [[ ${pwd} =~ ^[0-9a-zA-Z.]+$ ]] || merror "Not a valid Zoom Meeting password: '$pwd'"
 }
 
 
